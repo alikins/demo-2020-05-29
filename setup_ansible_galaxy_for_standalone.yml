@@ -19,6 +19,8 @@
       autohub_repo_name: "{{autohub_namespace}}"
       autohub_distro_name: "{{autohub_repo_name}}"
       autohub_distro_base_path: "{{autohub_distro_name}}"
+      # The name of the server url that will be used in the ansible.cfg server_list
+      autohub_server_name: "local_{{autohub_distro_name}}"
       # stuff: "{{ blip | b64encode }}"
       # baz: "{{ foobar | to_json }}"
       # baz_blip: "{{ baz }} {{ blip }}"
@@ -153,16 +155,54 @@
 
     - set_fact:
         pulp_distro_href: "{{pulp_distro_create_task_result['json']['created_resources'][0]}}"
-        autohub_repo_href: "{{autohub_url}}/content/{{autohub_distro_base_path}}/"
+        autohub_repo_href: "{{autohub_url}}content/{{autohub_distro_base_path}}/"
 
     - name: debug pulp_distro_href
       debug:
         var: pulp_distro_href
 
+    # get user token for user
+    - name: Get autohub token for the user
+      uri:
+        url: "{{autohub_url}}v3/auth/token/"
+        method: POST
+        url_username: "{{autohub_username}}"
+        url_password: "{{autohub_password}}"
+        force_basic_auth: yes
+        return_content: yes
+        status_code: 200
+      register: get_user_token_results
+
+    - name: debug get_user_token_results
+      debug:
+        var: get_user_token_results
+
+    - set_fact:
+        autohub_user_token: "{{get_user_token_results['json']['token']}}"
+
+    # create an ansible.cfg that uses this autohub repo
+    # TODO: needs user created and user token
+    - name: create ansible.cfg
+      template:
+          src: ansible.cfg.j2
+          dest: ansible.cfg
+      register: template_ansible_cfg_result
+
+    - name: debug template_ansible_cfg_result
+      debug:
+        var: template_ansible_cfg_result
+
+    - name: This command will change the working directory to somedir/.
+      shell:
+        cmd: ANSIBLE_CONFIG=./ansible.cfg ansible-galaxy collection publish -v collection-releases/eifeltower-collection_inspect-0.0.220.tar.gz
+        # chdir: somedir/
+      register: publish_results
+
+    - debug:
+        var: publish_results
+
 
     # TODO
-    # - name: Create an ansible distribution
-    # - name: generate a ansible.cfg for the ansible repo/distro base_path url
     # - name: publish an artifact to the ansible repo
     # - name: use ansible-galaxy to install that collection to a system
 
