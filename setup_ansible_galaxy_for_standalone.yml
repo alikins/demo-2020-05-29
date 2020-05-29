@@ -1,0 +1,172 @@
+---
+- hosts: localhost
+  gather_facts: false
+  vars:
+      blip: foobar
+      autohub_hostname: localhost:5001
+      autohub_api: "/api/automation-hub/"
+      autohub_pulp_api: "/pulp/api/v3/"
+      autohub_url: "http://{{autohub_hostname}}{{autohub_api}}"
+      autohub_pulp_url: "http://{{autohub_hostname}}{{autohub_pulp_api}}"
+      pulp_admin_username: admin
+      pulp_admin_password: admin
+      autohub_admin_username: admin
+      autohub_admin_password: admin
+      autohub_username: eifel
+      autohub_password: soap_not_radio
+      autohub_namespace: eifeltower
+      # NOTE: convention is to make these all the same as the namespace or org name
+      autohub_repo_name: "{{autohub_namespace}}"
+      autohub_distro_name: "{{autohub_repo_name}}"
+      autohub_distro_base_path: "{{autohub_distro_name}}"
+      # stuff: "{{ blip | b64encode }}"
+      # baz: "{{ foobar | to_json }}"
+      # baz_blip: "{{ baz }} {{ blip }}"
+  tasks:
+    - name: debug vars
+      debug:
+        var: vars
+
+    - name: debug autohub_url
+      debug:
+        var: autohub_url
+
+    - name: automation-hub admin login
+      uri:
+        url: "{{autohub_url}}v3/auth/token/"
+        method: POST
+        url_username: "{{autohub_admin_username}}"
+        url_password: "{{autohub_admin_password}}"
+        force_basic_auth: yes
+        status_code: 200
+        body_format: json
+        return_content: yes
+      register: autohub_admin_login_result
+
+    - name: debug autohub_login
+      debug:
+        var: autohub_admin_login_result
+
+
+    - set_fact:
+        admin_token: "{{autohub_admin_login_result['json']['token']}}"
+
+    - set_fact:
+        admin_authorization_header: "Token {{admin_token}}"
+
+
+    - name: Create an automation-hub namespace
+      uri:
+        url: "{{autohub_url}}v3/namespaces/"
+        method: POST
+        headers:
+          Authorization: "{{admin_authorization_header}}"
+        body_format: json
+        body:
+          name: "{{autohub_namespace}}"
+          description: "A namespace for stuff"
+          company: "Red Hat"
+          email: "eifeltower@example.com"
+          # links:
+          #   - url: "https://github.com/ansible/awx/"
+          #     name: "AWX github"
+          groups:
+            - name: "system:partner-engineers"
+        return_content: yes
+        status_code: 201
+      register: autohub_create_namespace_result
+
+    - name: debug autohub_create_namespace_result
+      debug:
+        var: autohub_create_namespace_result
+
+    - name: Create a pulp Repository
+      uri:
+        url: "{{autohub_pulp_url}}repositories/ansible/ansible/"
+        method: POST
+        url_username: "{{pulp_admin_username}}"
+        url_password: "{{pulp_admin_password}}"
+        force_basic_auth: yes
+        body_format: json
+        body:
+          name: "{{autohub_namespace}}"
+          description: "{{autohub_namespace}} repository"
+        return_content: yes
+        status_code: 201
+      register: pulp_repo_create_result
+
+    - name: debug pulp_repo_create_result
+      debug:
+        var: pulp_repo_create_result
+
+    - set_fact:
+        pulp_repo_href: "{{pulp_repo_create_result['json']['pulp_href']}}"
+
+    - debug:
+        var: pulp_repo_href
+
+    - name: Create a pulp Distribution
+      uri:
+        url: "{{autohub_pulp_url}}distributions/ansible/ansible/"
+        method: POST
+        url_username: "{{pulp_admin_username}}"
+        url_password: "{{pulp_admin_password}}"
+        force_basic_auth: yes
+        body_format: json
+        body:
+          # NOTE: This doesn't have to match the org or namespace but does by convention/default
+          name: "{{autohub_namespace}}"
+          # NOTE: same, but this could be a nested directory path in future
+          base_path: "{{autohub_namespace}}"
+          repository: "{{pulp_repo_href}}"
+        status_code: 202
+      register: pulp_distro_create_result
+
+    - name: show pulp_distro_create_result
+      debug:
+        var: pulp_distro_create_result
+
+    - set_fact:
+        pulp_distro_create_task_href: "{{pulp_distro_create_result['json']['task']}}"
+
+    - name: debug pulp_distro_create_task_href
+      debug:
+        var: pulp_distro_create_task_href
+
+    # TODO: Wait for the task to finish
+    - name: Check if pulp Distribution creation is finished
+      uri:
+        url: "http://{{autohub_hostname}}{{pulp_distro_create_task_href}}"
+        method: GET
+        url_username: "{{pulp_admin_username}}"
+        url_password: "{{pulp_admin_password}}"
+        force_basic_auth: yes
+        body_format: json
+        # will need to wait until this is 200
+        # or for result 'state' to be 'completed'
+        status_code: 200
+      register: pulp_distro_create_task_result
+
+    - name: debug pulp_distro_create_task_result
+      debug:
+        var: pulp_distro_create_task_result
+
+    - set_fact:
+        pulp_distro_href: "{{pulp_distro_create_task_result['json']['created_resources'][0]}}"
+        autohub_repo_href: "{{autohub_url}}/content/{{autohub_distro_base_path}}/"
+
+    - name: debug pulp_distro_href
+      debug:
+        var: pulp_distro_href
+
+
+    # TODO
+    # - name: Create an ansible distribution
+    # - name: generate a ansible.cfg for the ansible repo/distro base_path url
+    # - name: publish an artifact to the ansible repo
+    # - name: use ansible-galaxy to install that collection to a system
+
+
+# http POST 'http://localhost:5001/pulp/api/v3/repositories/ansible/ansible/' name="alikins-staging"
+# get the repository_pulp_href
+# http POST 'http://localhost:5001/pulp/api/v3/distributions/ansible/ansible/' name="alikins-stagine-distro" base_path="alikins-staging-distro-base-path" repository="{{repository_pulp_href}}"
