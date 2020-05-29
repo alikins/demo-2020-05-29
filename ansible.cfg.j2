@@ -1,0 +1,9 @@
+[galaxy]
+server_list = {{autohub_server_name}}
+
+[galaxy_server.{{autohub_server_name}}]
+# pulp ansible repo: http://{{autohub_hostname}}{{pulp_repo_href}}"
+# pulp ansible distro: http://{{autohub_hostname}}{{pulp_distro_href}}
+url={{autohub_repo_href}}
+token={{autohub_user_token}}
+
