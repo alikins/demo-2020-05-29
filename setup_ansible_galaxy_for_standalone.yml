@@ -192,7 +192,7 @@
       debug:
         var: template_ansible_cfg_result
 
-    - name: This command will change the working directory to somedir/.
+    - name: publish a collection with ansible-galaxy
       shell:
         cmd: ANSIBLE_CONFIG=./ansible.cfg ansible-galaxy collection publish -v collection-releases/eifeltower-collection_inspect-0.0.220.tar.gz
         # chdir: somedir/
@@ -201,6 +201,14 @@
     - debug:
         var: publish_results
 
+    - name: install a collection with ansible-galaxy
+      shell:
+        cmd: ANSIBLE_CONFIG=./ansible.cfg ansible-galaxy collection install -v eifeltower.collection_inspect
+        # chdir: somedir/
+      register: install_results
+
+    - debug:
+        var: install_results
 
     # TODO
     # - name: publish an artifact to the ansible repo
